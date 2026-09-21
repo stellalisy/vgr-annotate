@@ -2939,7 +2939,7 @@ document.getElementById('save').onclick = function () {
   const blob = new Blob([JSON.stringify({labels: L}, null, 1)],
                         {type: 'application/json'});
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = 'labels.json'; a.click();
+  a.href = URL.createObjectURL(blob); a.download = 'step_300_human_pref_annotator2.json'; a.click();
 };
 prog();
 </script>
