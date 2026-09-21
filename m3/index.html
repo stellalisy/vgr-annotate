@@ -3024,35 +3024,51 @@ prog();
 </script>
 
 <script>
-// 480 video elements with preload="metadata" makes the browser fetch metadata
-// for every one of them at load, which locks the main thread and produces
-// "page unresponsive". Each video carries no src until it is near the viewport;
-// it is attached on approach and detached once well away, so at most a handful
-// of media elements are live at a time.
+// 480 video elements with preload="metadata" made a browser fetch metadata for
+// all of them at open, which locked the main thread and produced "page
+// unresponsive". Each video carries no src until it is near the viewport.
+//
+// Autoplay needs care alongside that. Calling play() in the same tick as
+// setting src rejects, because the element has no data yet, so the earlier
+// version silently never played and the clips had to be clicked. Playback is
+// now requested again once the element reports it can play, and only if the
+// item is still the one on screen.
 (function () {
   var vids = Array.prototype.slice.call(document.querySelectorAll('video'));
+
   function attach(v) {
     if (!v.src && v.dataset.src) { v.src = v.dataset.src; v.load(); }
   }
   function detach(v) {
     if (v.src) { v.pause(); v.removeAttribute('src'); v.load(); }
   }
-  // wide margin: get it loading before it is on screen
-  var near = new IntersectionObserver(function (es) {
-    es.forEach(function (e) { e.isIntersecting ? attach(e.target) : null; });
+  function play(v) {
+    if (v.dataset.want !== '1') return;
+    var p = v.play();
+    if (p && p.catch) p.catch(function () { /* will retry on canplay */ });
+  }
+  function want(v, on) {
+    v.dataset.want = on ? '1' : '0';
+    if (on) { attach(v); play(v); } else { v.pause(); }
+  }
+  vids.forEach(function (v) {
+    v.addEventListener('canplay', function () { play(v); });
+    v.addEventListener('loadeddata', function () { play(v); });
+  });
+
+  // load ahead of arrival so a clip is ready by the time it is on screen
+  var pre = new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) attach(e.target); });
   }, { rootMargin: '1200px 0px' });
-  // narrow: play only what is actually visible
+  // play what is visible, pause what is not
   var vis = new IntersectionObserver(function (es) {
-    es.forEach(function (e) {
-      var v = e.target;
-      if (e.isIntersecting) { attach(v); var p = v.play(); if (p && p.catch) p.catch(function(){}); }
-      else { v.pause(); }
-    });
-  }, { threshold: 0.35 });
-  // far: free the element entirely
+    es.forEach(function (e) { want(e.target, e.isIntersecting); });
+  }, { threshold: 0.25 });
+  // free elements that are far away so memory does not grow while scrolling
   var far = new IntersectionObserver(function (es) {
     es.forEach(function (e) { if (!e.isIntersecting) detach(e.target); });
   }, { rootMargin: '3000px 0px' });
-  vids.forEach(function (v) { near.observe(v); vis.observe(v); far.observe(v); });
+
+  vids.forEach(function (v) { pre.observe(v); vis.observe(v); far.observe(v); });
 })();
 </script>
